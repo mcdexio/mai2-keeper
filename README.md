@@ -12,6 +12,7 @@ This bot keeps track of margin accounts in the MCDEX perpetual contract and find
 2. Goto [mcdex account page](https://mcdex.io/account/wallet). Press "Deposit" button to transfer some margin
 3. Checkout the example code
 ```
+# we need python 3.6
 git clone https://github.com/mcdexio/mai2-keeper.git
 cd mai2-keeper
 pip install -r requirements.txt

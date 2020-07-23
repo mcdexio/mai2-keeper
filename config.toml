@@ -25,6 +25,7 @@ url = "https://mcdex.io/api"
 position_limit = 1000
 leverage = 5
 inverse = true
+lot_size = 10
 
 [logging]
 version = 1
