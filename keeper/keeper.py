@@ -54,11 +54,13 @@ class Keeper:
         self.mcdex = None
         self.position_limit = 0
         self.inverse = True
+        self.lot_size = 10
         if self.config['mcdex'] is not None:
             self.mcdex = Mcdex(self.config['mcdex']['url'], self.config['mcdex']['market_id'])
             self.position_limit = self.config['mcdex']['position_limit']
             self.inverse = self.config['mcdex']['inverse']
             self.leverage = self.config['mcdex']['leverage']
+            self.lot_size = self.config['mcdex']['lot_size']
 
 
         # watcher
@@ -126,7 +128,8 @@ class Keeper:
             account = Account()
             acct = account.from_key(private_key)
             self.web3.middleware_onion.add(construct_sign_and_send_raw_middleware(acct))
-        except:
+        except Exception as e:
+            self.logger.warning(f"check private key error: {e}")
             return False
         return True
 
@@ -149,33 +152,36 @@ class Keeper:
             
         return True
 
-    def _check_accounts_position(self):
+    def _check_all_keeper_accounts_position(self):
         for i in range(len(self.keeper_accounts)):
-            self.mcdex.set_wallet(self.keeper_account_keys[i], self.keeper_accounts[i].address)
-            margin_account = self.perp.getMarginAccount(self.keeper_accounts[i])
-            size = int(margin_account.size)
-            if size < self.position_limit:
-                continue
+            self._check_keeper_account_position(i)
 
-            # skip if active orders exist
-            try:
-                active_orders = self.mcdex.get_active_orders()
-                if len(active_orders) > 0:
-                    self.logger.info(f"active orders exist. address:{self.keeper_accounts[i].address}")
-                    continue
-            except Exception as e:
-                self.logger.fatal(f"close position in mcdex failed. address:{self.keeper_accounts[i].address} error:{e}")
-                continue
-            
-            side = "buy" if margin_account.side == PositionSide.SHORT else "sell"
-            if self.inverse:
-                side = "sell" if margin_account.side == PositionSide.SHORT else "buy"
+    def _check_keeper_account_position(self, idx):
+        self.mcdex.set_wallet(self.keeper_account_keys[idx], self.keeper_accounts[idx].address)
+        margin_account = self.perp.getMarginAccount(self.keeper_accounts[idx])
+        size = int(margin_account.size)
+        if size < self.position_limit:
+            return
 
-            try:
-                self.mcdex.place_order(str(size), "market", "0", side, 300, str(self.leverage))
-            except Exception as e:
-                self.logger.fatal(f"close position in mcdex failed. address:{self.keeper_accounts[i].address} error:{e}")
-                continue
+        # skip if active orders exist
+        try:
+            active_orders = self.mcdex.get_active_orders()
+            if len(active_orders) > 0:
+                self.logger.info(f"active orders exist. address:{self.keeper_accounts[idx].address}")
+                return
+        except Exception as e:
+            self.logger.fatal(f"close position in mcdex failed. address:{self.keeper_accounts[idx].address} error:{e}")
+            return
+        
+        side = "buy" if margin_account.side == PositionSide.SHORT else "sell"
+        if self.inverse:
+            side = "sell" if margin_account.side == PositionSide.SHORT else "buy"
+
+        try:
+            self.mcdex.place_order(str(size), "market", "0", side, 300, str(self.leverage))
+        except Exception as e:
+            self.logger.fatal(f"close position in mcdex failed. address:{self.keeper_accounts[idx].address} error:{e}")
+        return
 
     def _check_all_accounts(self):
         def thread_fun(start, end, keeper_account_idx):
@@ -184,7 +190,7 @@ class Keeper:
                 self._check_account(index, keeper_account_idx)
  
         # check keeper accounts position
-        self._check_accounts_position()
+        self._check_all_keeper_accounts_position()
 
         # check perpetual contract status
         perp_status = self.perp.status()
@@ -220,11 +226,24 @@ class Keeper:
         self.logger.info(f"check_account: keeper_account:{keeper_account} address:{address} side:{margin_account.side} size:{margin_account.size}")
         if not self.perp.is_safe(address):
             try:
-                liquidate_data = self.perp.liquidate(address, margin_account.size, keeper_account, self.gas_price)
+                keeper_liquidate = self._get_keeper_liquidate_amount(keeper_account)
+                liquidate_amount = Wad.min(margin_account.size, keeper_liquidate)
+                liquidate_data = self.perp.liquidate(address, liquidate_amount, keeper_account, self.gas_price)
                 self.logger.info(f"liquidate success. address:{address} price:{liquidate_data.price} amount:{liquidate_data.amount}")
             except Exception as e:
                 self.logger.fatal(f"liquidate failed. address:{address} error:{e}")
-                return
+        
+        self._check_keeper_account_position(keeper_account_idx)
+
+    def _get_keeper_liquidate_amount(self, keeper_account):
+        markPrice = self.perp.markPrice()
+        availableMargin = self.perp.getAvailableMargin(keeper_account)
+        if self.inverse:
+            markPrice = Wad.from_number(1)/markPrice
+        amount = int(availableMargin * Wad.from_number(self.leverage) * markPrice)
+        amount = amount - amount%self.lot_size
+        return Wad.from_number(amount)
+
 
     def main(self):
         if self._check_keeper_accounts() and self._check_accounts_balance():

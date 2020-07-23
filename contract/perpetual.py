@@ -58,6 +58,13 @@ class Perpetual(Contract):
     def accounts(self, account_id: int) -> Address:
         return Address(self.contract.functions.accountList(account_id).call())
 
+    def markPrice(self) -> Wad:
+        return Wad(self.contract.functions.markPrice().call())
+
+    def getAvailableMargin(self, address: Address) -> Wad:
+        availableMargin = self.contract.functions.availableMargin(address.address).call()
+        return Wad(availableMargin)
+
     def getMarginAccount(self, address: Address) -> MarginAccount:
         margin_account = self.contract.functions.getMarginAccount(address.address).call()
         return MarginAccount(margin_account[0], margin_account[1], margin_account[2], margin_account[3], margin_account[4], margin_account[5])

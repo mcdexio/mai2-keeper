@@ -3,7 +3,7 @@
 The MCDEX Perpetual contract incentives external agents, called keepers, to monitor and keep margin accounts safe.
 
 This bot keeps track of margin accounts in the MCDEX perpetual contract and finds out accounts that have been unsafe. The bot will initiate a "liquidate" command to the Ethereum network, your current margin account will:
-* Earn penalty fee
+* Earn penalty prize
 * Get his/her position
 
 ## Getting Started
