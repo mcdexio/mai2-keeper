@@ -15,10 +15,6 @@ eth_gas_url = "https://ethgasstation.info/json/ethgasAPI.json"
 address = ""
 private_key = ""
 
-#[[accounts]]
-#address = ""
-# private_key = ""
-
 [contracts]
 perpetual = "0x220a9f0DD581cbc58fcFb907De0454cBF3777f76"
 collateral_token = "0x0000000000000000000000000000000000000000"
